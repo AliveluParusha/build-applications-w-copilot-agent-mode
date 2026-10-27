@@ -44,8 +44,34 @@ export async function listTeams() {
   return Team.find().lean();
 }
 
-export async function createTeam(_input: unknown) {
-  throw Object.assign(new Error('Team validation is not implemented yet'), { status: 501 });
+export async function createTeam(input: unknown) {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    throw Object.assign(new Error('Team input must be an object'), { status: 400 });
+  }
+
+  const { name, mascot, members = [] } = input as Record<string, unknown>;
+  if (
+    typeof name !== 'string'
+    || name.trim().length === 0
+    || typeof mascot !== 'string'
+    || mascot.trim().length === 0
+    || !Array.isArray(members)
+    || !members.every((member) => typeof member === 'string' && mongoose.isValidObjectId(member))
+  ) {
+    throw Object.assign(new Error('Team input is invalid'), { status: 400 });
+  }
+
+  const memberIds = members as string[];
+  const existingMembers = await User.find({ _id: { $in: memberIds } }).select('_id').lean();
+  if (existingMembers.length !== new Set(memberIds.map((id) => id.toLowerCase())).size) {
+    throw Object.assign(new Error('One or more team members were not found'), { status: 404 });
+  }
+
+  return Team.create({
+    name: name.trim(),
+    mascot: mascot.trim(),
+    members: memberIds,
+  });
 }
 
 export async function getLeaderboard() {
