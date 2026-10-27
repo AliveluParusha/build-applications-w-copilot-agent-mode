@@ -93,8 +93,31 @@ export async function getLeaderboard() {
   return teams.map((team, index) => ({ ...team, rank: index + 1 }));
 }
 
-export async function suggestWorkouts(_userEmail: string) {
-  return Workout.find().limit(1).lean();
+export async function suggestWorkouts(userEmail: string) {
+  const user = await User.findOne({ email: userEmail }).lean();
+  if (!user) {
+    throw Object.assign(new Error('User was not found'), { status: 404 });
+  }
+
+  const recentActivity = await Activity.findOne({ user: user._id }).sort({ occurredAt: -1 }).lean();
+  const activityFocus: Record<string, string> = {
+    run: 'endurance',
+    cycle: 'endurance',
+    strength: 'strength',
+  };
+  const focus = user.fitnessGoal || (recentActivity ? activityFocus[recentActivity.type] : undefined);
+  const workouts = await Workout.find().lean();
+  const matchingWorkout = workouts.find((workout) => workout.focus === focus);
+  const suggestedWorkout = matchingWorkout ?? workouts[0];
+
+  if (!suggestedWorkout) {
+    return [];
+  }
+
+  const reason = recentActivity
+    ? `Recommended based on your ${recentActivity.type} activity and ${user.fitnessGoal} goal`
+    : `Recommended for your ${user.fitnessGoal} goal`;
+  return [{ ...suggestedWorkout, reason }];
 }
 
 export { User };
